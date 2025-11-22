@@ -1,0 +1,40 @@
+[
+  {
+    "id": "11111111-1111-1111-1111-111111111111",
+    "name": "New York City",
+    "country": "USA",
+    "coordinate": [40.7128, -74.0060],
+    "systems": [
+      {
+        "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "name": "NYC Subway",
+        "colorHex": "#0039A6"
+      },
+      {
+        "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "name": "PATH",
+        "colorHex": "#6CACE4"
+      }
+    ],
+    "visitedSystemIDs": []
+  },
+  {
+    "id": "22222222-2222-2222-2222-222222222222",
+    "name": "London",
+    "country": "UK",
+    "coordinate": [51.5074, -0.1278],
+    "systems": [
+      {
+        "id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+        "name": "London Underground",
+        "colorHex": "#000000"
+      },
+      {
+        "id": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+        "name": "DLR",
+        "colorHex": "#00AFAD"
+      }
+    ],
+    "visitedSystemIDs": []
+  }
+]
