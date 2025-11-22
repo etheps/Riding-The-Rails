@@ -9,7 +9,7 @@ struct TransitSystem: Identifiable, Hashable, Codable {
     var colorHex: String
 }
 
-struct City: Identifiable, Hashable, Codable {
+struct City: Identifiable {
     var id: UUID = UUID()
     var name: String
     var country: String
@@ -21,6 +21,49 @@ struct City: Identifiable, Hashable, Codable {
 
 extension City {
     var anyVisited: Bool { !visitedSystemIDs.isEmpty }
+}
+
+extension City: Codable {
+    private enum CodingKeys: String, CodingKey { case id, name, country, coordinate, systems, visitedSystemIDs }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        country = try container.decode(String.self, forKey: .country)
+        let coordPair = try container.decode([Double].self, forKey: .coordinate)
+        coordinate = CLLocationCoordinate2D(latitude: coordPair[0], longitude: coordPair[1])
+        systems = try container.decode([TransitSystem].self, forKey: .systems)
+        visitedSystemIDs = try container.decodeIfPresent(Set<UUID>.self, forKey: .visitedSystemIDs) ?? []
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(country, forKey: .country)
+        try container.encode([coordinate.latitude, coordinate.longitude], forKey: .coordinate)
+        try container.encode(systems, forKey: .systems)
+        try container.encode(visitedSystemIDs, forKey: .visitedSystemIDs)
+    }
+}
+
+extension City: Equatable {
+    static func == (lhs: City, rhs: City) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
+extension City: Hashable {
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(name)
+        hasher.combine(country)
+        hasher.combine(coordinate.latitude)
+        hasher.combine(coordinate.longitude)
+        hasher.combine(systems)
+        hasher.combine(visitedSystemIDs)
+    }
 }
 
 // MARK: - Helpers
@@ -44,27 +87,19 @@ extension Color {
     }
 }
 
-extension CLLocationCoordinate2D: Codable, Hashable {
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(latitude)
-        hasher.combine(longitude)
-    }
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let pair = try container.decode([Double].self)
-        self.init(latitude: pair[0], longitude: pair[1])
-    }
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        try container.encode([latitude, longitude])
-    }
-}
-
 // MARK: - Store
 @Observable
 final class MetroStore {
+    private let visitedDefaultsKey = "VisitedSystemIDsByCity"
+
     var cities: [City]
-    init(cities: [City] = SampleData.cities) { self.cities = cities }
+
+    init() {
+        // Load cities from bundled JSON
+        self.cities = Self.loadCitiesFromBundle() ?? []
+        // Apply persisted visited states from UserDefaults
+        applyPersistedVisits()
+    }
 
     func toggleVisit(cityID: City.ID, systemID: TransitSystem.ID) {
         guard let idx = cities.firstIndex(where: { $0.id == cityID }) else { return }
@@ -73,30 +108,39 @@ final class MetroStore {
         } else {
             cities[idx].visitedSystemIDs.insert(systemID)
         }
+        persistVisits()
     }
-}
 
-// MARK: - Sample Data
-enum SampleData {
-    static let cities: [City] = {
-        let nyc = City(
-            name: "New York City",
-            country: "USA",
-            coordinate: CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060),
-            systems: [
-                TransitSystem(name: "NYC Subway", colorHex: "#0039A6"),
-                TransitSystem(name: "PATH", colorHex: "#6CACE4")
-            ]
-        )
-        let london = City(
-            name: "London",
-            country: "UK",
-            coordinate: CLLocationCoordinate2D(latitude: 51.5074, longitude: -0.1278),
-            systems: [
-                TransitSystem(name: "London Underground", colorHex: "#000000"),
-                TransitSystem(name: "DLR", colorHex: "#00AFAD")
-            ]
-        )
-        return [nyc, london]
-    }()
+    // MARK: - Persistence
+    private func persistVisits() {
+        // Store a dictionary of city.id -> array of system UUID strings
+        let dict: [String: [String]] = Dictionary(uniqueKeysWithValues: cities.map { city in
+            let arr = city.visitedSystemIDs.map { $0.uuidString }
+            return (city.id.uuidString, arr)
+        })
+        UserDefaults.standard.set(dict, forKey: visitedDefaultsKey)
+    }
+
+    private func applyPersistedVisits() {
+        guard let dict = UserDefaults.standard.dictionary(forKey: visitedDefaultsKey) as? [String: [String]] else { return }
+        for i in cities.indices {
+            let key = cities[i].id.uuidString
+            if let arr = dict[key] {
+                cities[i].visitedSystemIDs = Set(arr.compactMap(UUID.init(uuidString:)))
+            }
+        }
+    }
+
+    // MARK: - Loading
+    private static func loadCitiesFromBundle() -> [City]? {
+        guard let url = Bundle.main.url(forResource: "Cities", withExtension: "json") else { return nil }
+        do {
+            let data = try Data(contentsOf: url)
+            let decoder = JSONDecoder()
+            return try decoder.decode([City].self, from: data)
+        } catch {
+            print("Failed to load Cities.json: \(error)")
+            return nil
+        }
+    }
 }
